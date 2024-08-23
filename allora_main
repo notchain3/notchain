@@ -1,0 +1,68 @@
+const axios = require('axios');
+
+// Function to fetch the current price from an API (example: CoinGecko API)
+async function fetchPrice(cryptoId) {
+    try {
+        const response = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=${cryptoId}&vs_currencies=usd');
+        return response.data[cryptoId].usd;
+    } catch (error) {
+        console.error('Error fetching price: ${error}');
+        return null;
+    }
+}
+
+// Function to calculate the slope (m) and intercept (b) for a linear regression
+function linearRegression(prices) {
+    const n = prices.length;
+    const x = [...Array(n).keys()]; // Time intervals (0, 1, 2, ..., n-1)
+    const y = prices;
+    
+    const sumX = x.reduce((acc, val) => acc + val, 0);
+    const sumY = y.reduce((acc, val) => acc + val, 0);
+    const sumXY = x.reduce((acc, val, i) => acc + val * y[i], 0);
+    const sumX2 = x.reduce((acc, val) => acc + val * val, 0);
+    
+    const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const b = (sumY - m * sumX) / n;
+    
+    return { m, b };
+}
+
+// Function to make a prediction based on the linear regression model
+function predictNextPrice(prices, predictTimeInterval) {
+    const { m, b } = linearRegression(prices);
+    const nextX = prices.length + predictTimeInterval; // Predicting for the next time interval
+    return m * nextX + b;
+}
+
+// Function to run the worker node
+async function runWorker(cryptoId) {
+    let prices = [];
+    while (true) {
+        try {
+            const currentPrice = await fetchPrice(cryptoId);
+            if (currentPrice) {
+                prices.push(currentPrice);
+                console.log('${new Date().toLocaleTimeString()} - Current ${cryptoId.toUpperCase()} Price: $${currentPrice}');
+                
+                if (prices.length > 20) { // Store only the last 20 data points
+                    prices.shift();
+                }
+                
+                if (prices.length >= 5) { // Start making predictions after 5 data points
+                    const predictedPrice = predictNextPrice(prices, 20);
+                    console.log('Predicted ${cryptoId.toUpperCase()} Price in 20 mins: $${predictedPrice}');
+                }
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for a minute before the next fetch
+        } catch (error) {
+            console.error('Error in worker loop: ${error}');
+            await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for a minute before retrying
+        }
+    }
+}
+
+// Start the worker node for ETH, BNB, or ARB
+const cryptoId = 'ethereum'; // Replace with 'binancecoin' or 'arbitrum' for other currencies
+runWorker(cryptoId);
